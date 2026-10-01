@@ -1,6 +1,6 @@
 # SMS Gateway
 
-An SMS gateway built the way telecom operators run A2P messaging. A **REST API** accepts messages and queues them in **Redis Streams**. **Workers** route each message by destination prefix to the cheapest carrier, send it over **SMPP 3.4**, fail over when a carrier misbehaves, and track **delivery receipts (DLRs)** until each message is delivered or failed. Everything is monitored with **Prometheus, Alertmanager and Grafana**, autoscaled on Kubernetes with **KEDA**, and tested in CI, including a k6 load test.
+An SMS gateway taht is built the way telecom operators run A2P messaging. A **REST API** accepts messages and queues them in **Redis Streams**. **Workers** route each message by destination prefix to the cheapest carrier, send it over **SMPP 3.4**, fail over when a carrier misbehaves, and track **delivery receipts (DLRs)** until each message is delivered or failed. Everything is monitored with **Prometheus, Alertmanager and Grafana**, autoscaled on Kubernetes with **KEDA**, and tested in CI, including a k6 load test.
 
 Two simulated carriers (SMSCs) are included, so the whole system runs on a laptop and no real SMS is ever sent.
 
