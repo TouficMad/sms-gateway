@@ -1,0 +1,69 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker
+  labels: {app: sms-worker}
+spec:
+  replicas: 1   # managed by the KEDA ScaledObject below
+  selector:
+    matchLabels: {app: sms-worker}
+  template:
+    metadata:
+      labels: {app: sms-worker}
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9100"
+    spec:
+      terminationGracePeriodSeconds: 45  # finish in-flight submits on scale-down
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+      containers:
+        - name: worker
+          image: sms-gateway
+          command: ["python", "-m", "smsgw.worker"]
+          ports:
+            - {name: metrics, containerPort: 9100}
+          env:
+            - {name: REDIS_URL, value: "redis://redis:6379/0"}
+            - {name: ROUTES_CONFIG, value: /config/routes.yaml}
+            - {name: CARRIER_A_HOST, value: carrier-a}
+            - {name: CARRIER_B_HOST, value: carrier-b}
+            - {name: CARRIER_A_PORT, value: "2775"}
+            - {name: CARRIER_B_PORT, value: "2775"}
+          envFrom:
+            - secretRef: {name: carrier-credentials}
+          readinessProbe:
+            httpGet: {path: /metrics, port: metrics}
+            periodSeconds: 10
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {memory: 256Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: ["ALL"]}
+          volumeMounts:
+            - {name: routes, mountPath: /config, readOnly: true}
+      volumes:
+        - name: routes
+          configMap: {name: sms-routes}
+---
+# Scale workers on queue depth instead of CPU (needs KEDA: https://keda.sh)
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: worker
+spec:
+  scaleTargetRef:
+    name: worker
+  minReplicaCount: 1
+  maxReplicaCount: 10
+  cooldownPeriod: 120
+  triggers:
+    - type: redis-streams
+      metadata:
+        address: redis.sms.svc.cluster.local:6379
+        stream: sms:outbound
+        consumerGroup: workers
+        lagCount: "500"   # one extra worker per 500 queued messages

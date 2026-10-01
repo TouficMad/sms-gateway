@@ -1,0 +1,73 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+  labels: {app: sms-api}
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: sms-api}
+  template:
+    metadata:
+      labels: {app: sms-api}
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+      containers:
+        - name: api
+          image: sms-gateway
+          ports:
+            - {name: http, containerPort: 8080}
+          env:
+            - {name: REDIS_URL, value: "redis://redis:6379/0"}
+            - {name: ROUTES_CONFIG, value: /config/routes.yaml}
+          readinessProbe:
+            httpGet: {path: /health, port: http}
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: {path: /health, port: http}
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {memory: 256Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: ["ALL"]}
+          volumeMounts:
+            - {name: routes, mountPath: /config, readOnly: true}
+      volumes:
+        - name: routes
+          configMap: {name: sms-routes}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: api
+  labels: {app: sms-api}
+spec:
+  selector: {app: sms-api}
+  ports:
+    - {name: http, port: 80, targetPort: http}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: api
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: api
+  minReplicas: 2
+  maxReplicas: 6
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target: {type: Utilization, averageUtilization: 70}

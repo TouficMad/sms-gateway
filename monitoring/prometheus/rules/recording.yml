@@ -1,0 +1,28 @@
+groups:
+  - name: sms-kpis
+    rules:
+      - record: carrier:sms_delivery_ratio:rate5m
+        expr: |
+          sum by (carrier) (rate(sms_dlr_total{stat="DELIVRD"}[5m]))
+            / sum by (carrier) (rate(sms_dlr_total[5m]))
+
+      - record: route:sms_delivery_ratio:rate5m
+        expr: |
+          sum by (route) (rate(sms_dlr_total{stat="DELIVRD"}[5m]))
+            / sum by (route) (rate(sms_dlr_total[5m]))
+
+      - record: carrier:sms_submit_error_ratio:rate5m
+        expr: |
+          sum by (carrier) (rate(sms_submit_total{result!="ok"}[5m]))
+            / sum by (carrier) (rate(sms_submit_total[5m]))
+
+      - record: carrier:sms_dlr_latency_seconds:p95_5m
+        expr: |
+          histogram_quantile(0.95,
+            sum by (le, carrier) (rate(sms_dlr_latency_seconds_bucket[5m])))
+
+      - record: carrier:sms_submit_rate:rate1m
+        expr: sum by (carrier) (rate(sms_submit_total{result="ok"}[1m]))
+
+      - record: route:sms_segments:increase1h
+        expr: sum by (route, carrier) (increase(sms_segments_total[1h]))

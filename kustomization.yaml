@@ -1,0 +1,29 @@
+# kubectl apply -k .
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: sms
+
+resources:
+  - k8s/namespace.yaml
+  - k8s/redis.yaml
+  - k8s/api.yaml
+  - k8s/worker.yaml
+  - k8s/carriers.yaml
+  - k8s/network-policy.yaml
+
+images:
+  - name: sms-gateway
+    newName: ghcr.io/touficmad/sms-gateway
+    newTag: latest
+
+configMapGenerator:
+  - name: sms-routes
+    files:
+      - config/routes.yaml
+
+# Demo credentials. In production use External Secrets / Sealed Secrets instead.
+secretGenerator:
+  - name: carrier-credentials
+    literals:
+      - CARRIER_A_PASSWORD=secret
+      - CARRIER_B_PASSWORD=secret

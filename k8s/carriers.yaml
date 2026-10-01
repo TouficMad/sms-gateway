@@ -1,0 +1,103 @@
+# Simulated carrier SMSCs. In production, delete this file and point
+# CARRIER_*_HOST at the real carriers (usually over a VPN).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: carrier-a
+  labels: {app: carrier-a}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: carrier-a}
+  template:
+    metadata:
+      labels: {app: carrier-a, role: carrier}
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+      containers:
+        - name: smsc
+          image: sms-gateway
+          command: ["python", "-m", "smsgw.simulator"]
+          ports:
+            - {name: smpp, containerPort: 2775}
+            - {name: control, containerPort: 8000}
+          env:
+            - {name: SMSC_NAME, value: carrier-a}
+            - {name: DELIVERY_RATE, value: "0.96"}
+            - {name: DLR_DELAY_SECONDS, value: "1.5"}
+            - name: SMPP_PASSWORD
+              valueFrom:
+                secretKeyRef: {name: carrier-credentials, key: CARRIER_A_PASSWORD}
+          readinessProbe:
+            httpGet: {path: /health, port: control}
+            periodSeconds: 5
+          resources:
+            requests: {cpu: 50m, memory: 96Mi}
+            limits: {memory: 192Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: ["ALL"]}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: carrier-a
+spec:
+  selector: {app: carrier-a}
+  ports:
+    - {name: smpp, port: 2775, targetPort: smpp}
+    - {name: control, port: 8000, targetPort: control}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: carrier-b
+  labels: {app: carrier-b}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: carrier-b}
+  template:
+    metadata:
+      labels: {app: carrier-b, role: carrier}
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+      containers:
+        - name: smsc
+          image: sms-gateway
+          command: ["python", "-m", "smsgw.simulator"]
+          ports:
+            - {name: smpp, containerPort: 2775}
+            - {name: control, containerPort: 8000}
+          env:
+            - {name: SMSC_NAME, value: carrier-b}
+            - {name: DELIVERY_RATE, value: "0.90"}
+            - {name: DLR_DELAY_SECONDS, value: "3"}
+            - name: SMPP_PASSWORD
+              valueFrom:
+                secretKeyRef: {name: carrier-credentials, key: CARRIER_B_PASSWORD}
+          readinessProbe:
+            httpGet: {path: /health, port: control}
+            periodSeconds: 5
+          resources:
+            requests: {cpu: 50m, memory: 96Mi}
+            limits: {memory: 192Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: ["ALL"]}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: carrier-b
+spec:
+  selector: {app: carrier-b}
+  ports:
+    - {name: smpp, port: 2775, targetPort: smpp}
+    - {name: control, port: 8000, targetPort: control}

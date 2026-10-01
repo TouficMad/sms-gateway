@@ -1,0 +1,51 @@
+# Carriers the gateway binds to over SMPP. Secrets come from environment variables.
+carriers:
+  carrier-a:
+    host: ${CARRIER_A_HOST:-localhost}
+    port: ${CARRIER_A_PORT:-2775}
+    system_id: ${CARRIER_A_SYSTEM_ID:-gateway}
+    password: ${CARRIER_A_PASSWORD:-secret}
+    tps: 100                 # throughput agreed with the carrier
+    failure_threshold: 5     # consecutive submit failures before the circuit opens
+    reset_after_seconds: 30
+  carrier-b:
+    host: ${CARRIER_B_HOST:-localhost}
+    port: ${CARRIER_B_PORT:-2776}
+    system_id: ${CARRIER_B_SYSTEM_ID:-gateway}
+    password: ${CARRIER_B_PASSWORD:-secret}
+    tps: 50
+    failure_threshold: 5
+    reset_after_seconds: 30
+
+# Longest prefix wins. Within a route, the cheapest carrier is tried first and the
+# others are used as failover. Costs are per SMS segment in USD.
+routes:
+  - name: lebanon-mobile
+    prefixes: ["9613", "96170", "96171", "96176", "96178", "96179", "96181"]
+    carriers:
+      - {carrier: carrier-b, cost: 0.0310}
+      - {carrier: carrier-a, cost: 0.0350}
+  - name: lebanon
+    prefix: "961"
+    carriers:
+      - {carrier: carrier-a, cost: 0.0330}
+      - {carrier: carrier-b, cost: 0.0340}
+  - name: uk
+    prefix: "44"
+    carriers:
+      - {carrier: carrier-a, cost: 0.0280}
+      - {carrier: carrier-b, cost: 0.0300}
+  - name: france
+    prefix: "33"
+    carriers:
+      - {carrier: carrier-b, cost: 0.0550}
+      - {carrier: carrier-a, cost: 0.0600}
+  - name: uae
+    prefix: "971"
+    carriers:
+      - {carrier: carrier-a, cost: 0.0290}
+  - name: default
+    prefix: ""
+    carriers:
+      - {carrier: carrier-a, cost: 0.0800}
+      - {carrier: carrier-b, cost: 0.0850}

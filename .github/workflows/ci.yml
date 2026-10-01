@@ -1,0 +1,107 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  test:
+    name: Lint & test (unit, SMPP interop, end-to-end)
+    runs-on: ubuntu-latest
+    services:
+      redis:
+        image: redis:7.4-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 3s --health-retries 10
+    defaults:
+      run:
+        working-directory: gateway
+    env:
+      REDIS_URL: redis://localhost:6379/0
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: gateway/requirements-dev.txt
+      - run: pip install -r requirements-dev.txt
+      - run: ruff check .
+      - run: pytest -v
+
+  monitoring:
+    name: Prometheus, Alertmanager & Grafana config
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: promtool check rules
+        run: |
+          docker run --rm -v "$PWD/monitoring:/m" --entrypoint promtool prom/prometheus:v2.55.0 \
+            check rules /m/prometheus/rules/recording.yml /m/prometheus/rules/alerts.yml
+      - name: promtool test rules (alert unit tests)
+        run: |
+          docker run --rm -v "$PWD/monitoring:/m" -w /m/prometheus/tests --entrypoint promtool \
+            prom/prometheus:v2.55.0 test rules alerts_test.yml
+      - name: amtool check-config
+        run: |
+          docker run --rm -v "$PWD/monitoring:/m" --entrypoint amtool prom/alertmanager:v0.27.0 \
+            check-config /m/alertmanager/alertmanager.yml
+      - name: Grafana dashboard is valid JSON
+        run: python3 -m json.tool monitoring/grafana/dashboards/sms-gateway.json > /dev/null
+
+  kubernetes:
+    name: Kubernetes manifests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install kustomize and kubeconform
+        run: |
+          curl -sSfL https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv5.4.3/kustomize_v5.4.3_linux_amd64.tar.gz | tar xz
+          curl -sSfL https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz | tar xz kubeconform
+      - name: Build and validate (including the KEDA ScaledObject schema)
+        run: |
+          ./kustomize build . > manifests.yaml
+          ./kubeconform -strict -summary -kubernetes-version 1.31.0 \
+            -schema-location default \
+            -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+            manifests.yaml
+
+  stack:
+    name: Docker Compose smoke & load test
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Start the stack
+        run: docker compose up -d --build --wait redis carrier-a carrier-b api worker
+      - name: Smoke test (every route, Arabic text, failover)
+        run: ./scripts/smoke-test.sh
+      - name: Load test (k6, 50 msg/s for 30s)
+        run: docker compose --profile loadtest run --rm -e RATE=50 -e DURATION=30s k6
+      - name: Logs
+        if: failure()
+        run: docker compose logs --tail 100
+      - name: Stop
+        if: always()
+        run: docker compose down -v
+
+  publish:
+    name: Publish image to GHCR
+    needs: [test, monitoring, kubernetes, stack]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build & push
+        run: |
+          IMAGE=ghcr.io/$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')/sms-gateway
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          docker build -t "$IMAGE:${{ github.sha }}" -t "$IMAGE:latest" gateway
+          docker push "$IMAGE:${{ github.sha }}"
+          docker push "$IMAGE:latest"

@@ -1,0 +1,66 @@
+groups:
+  - name: sms-gateway
+    rules:
+      - alert: SmsCarrierDisconnected
+        expr: max by (carrier) (sms_carrier_connected) == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "No SMPP session bound to {{ $labels.carrier }}"
+          description: "Traffic for {{ $labels.carrier }} is failing over. Check the carrier link, VPN and bind credentials."
+
+      - alert: SmsCarrierCircuitOpen
+        expr: max by (carrier) (sms_carrier_circuit_open) == 1
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Circuit breaker open for {{ $labels.carrier }}"
+          description: "Repeated submit_sm failures. The gateway has stopped sending to this carrier for now."
+
+      - alert: SmsLowDeliveryRate
+        expr: |
+          carrier:sms_delivery_ratio:rate5m < 0.80
+            and on (carrier) sum by (carrier) (rate(sms_dlr_total[5m])) > 0.1
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Low delivery rate on {{ $labels.carrier }}"
+          description: "Only {{ $value | humanizePercentage }} of messages are DELIVRD. Consider moving routes to another carrier."
+
+      - alert: SmsHighSubmitErrorRate
+        expr: carrier:sms_submit_error_ratio:rate5m > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "submit_sm errors on {{ $labels.carrier }}"
+          description: "{{ $value | humanizePercentage }} of submit_sm are rejected (throttling or SMSC errors)."
+
+      - alert: SmsSlowDeliveryReceipts
+        expr: carrier:sms_dlr_latency_seconds:p95_5m > 60
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Slow delivery receipts from {{ $labels.carrier }}"
+          description: "p95 time to DLR is {{ $value | humanizeDuration }}."
+
+      - alert: SmsQueueBacklog
+        expr: max(sms_queue_backlog) > 1000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "SMS queue backlog is growing"
+          description: "{{ $value }} messages are waiting. Scale the workers or check carrier throughput."
+
+      - alert: SmsGatewayComponentDown
+        expr: up{job=~"sms-api|sms-worker"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.job }} instance {{ $labels.instance }} is down"

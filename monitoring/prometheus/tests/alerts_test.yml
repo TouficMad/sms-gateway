@@ -1,0 +1,66 @@
+# promtool test rules monitoring/prometheus/tests/alerts_test.yml
+rule_files:
+  - ../rules/recording.yml
+  - ../rules/alerts.yml
+
+evaluation_interval: 1m
+
+tests:
+  - interval: 1m
+    input_series:
+      # 60 receipts/min from carrier-b, only 30 delivered -> 50%
+      - series: 'sms_dlr_total{carrier="carrier-b",route="uk",stat="DELIVRD"}'
+        values: "0+30x20"
+      - series: 'sms_dlr_total{carrier="carrier-b",route="uk",stat="UNDELIV"}'
+        values: "0+30x20"
+      # carrier-a healthy: 98%
+      - series: 'sms_dlr_total{carrier="carrier-a",route="uk",stat="DELIVRD"}'
+        values: "0+49x20"
+      - series: 'sms_dlr_total{carrier="carrier-a",route="uk",stat="UNDELIV"}'
+        values: "0+1x20"
+      # both workers lost the session to carrier-b
+      - series: 'sms_carrier_connected{carrier="carrier-b",instance="w1"}'
+        values: "0x20"
+      - series: 'sms_carrier_connected{carrier="carrier-b",instance="w2"}'
+        values: "0x20"
+      # one worker still bound to carrier-a: not an outage
+      - series: 'sms_carrier_connected{carrier="carrier-a",instance="w1"}'
+        values: "1x20"
+      - series: 'sms_carrier_connected{carrier="carrier-a",instance="w2"}'
+        values: "0x20"
+    alert_rule_test:
+      - eval_time: 16m
+        alertname: SmsLowDeliveryRate
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              carrier: carrier-b
+            exp_annotations:
+              summary: "Low delivery rate on carrier-b"
+              description: "Only 50% of messages are DELIVRD. Consider moving routes to another carrier."
+      - eval_time: 5m
+        alertname: SmsCarrierDisconnected
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              carrier: carrier-b
+            exp_annotations:
+              summary: "No SMPP session bound to carrier-b"
+              description: "Traffic for carrier-b is failing over. Check the carrier link, VPN and bind credentials."
+
+  - interval: 1m
+    input_series:
+      - series: 'sms_submit_total{carrier="carrier-a",route="uk",result="ok"}'
+        values: "0+90x10"
+      - series: 'sms_submit_total{carrier="carrier-a",route="uk",result="0x58"}'
+        values: "0+10x10"
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: SmsHighSubmitErrorRate
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              carrier: carrier-a
+            exp_annotations:
+              summary: "submit_sm errors on carrier-a"
+              description: "10% of submit_sm are rejected (throttling or SMSC errors)."

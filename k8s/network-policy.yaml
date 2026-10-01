@@ -1,0 +1,15 @@
+# Only the API and the workers may talk to Redis
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: redis-clients
+spec:
+  podSelector:
+    matchLabels: {app: redis}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector: {matchLabels: {app: sms-api}}
+        - podSelector: {matchLabels: {app: sms-worker}}
+      ports:
+        - {port: 6379, protocol: TCP}

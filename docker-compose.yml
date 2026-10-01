@@ -1,0 +1,129 @@
+x-gateway: &gateway
+  build: ./gateway
+  image: sms-gateway:local
+  environment: &gateway-env
+    REDIS_URL: redis://redis:6379/0
+    CARRIER_A_HOST: carrier-a
+    CARRIER_A_PORT: "2775"
+    CARRIER_B_HOST: carrier-b
+    CARRIER_B_PORT: "2775"
+  volumes:
+    - ./config:/app/config:ro
+  depends_on:
+    redis:
+      condition: service_healthy
+
+x-healthcheck: &http-health
+  interval: 5s
+  timeout: 3s
+  retries: 12
+
+services:
+  redis:
+    image: redis:7.4-alpine
+    command: ["redis-server", "--appendonly", "yes"]   # queue survives restarts
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  api:
+    <<: *gateway
+    ports:
+      - "8080:8080"
+    healthcheck:
+      <<: *http-health
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
+
+  worker:
+    <<: *gateway
+    command: ["python", "-m", "smsgw.worker"]
+    deploy:
+      replicas: 2
+    healthcheck:
+      <<: *http-health
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:9100/metrics')"]
+    depends_on:
+      redis:
+        condition: service_healthy
+      carrier-a:
+        condition: service_healthy
+      carrier-b:
+        condition: service_healthy
+
+  # Two simulated carrier SMSCs speaking SMPP 3.4, with different quality
+  carrier-a:
+    <<: *gateway
+    command: ["python", "-m", "smsgw.simulator"]
+    environment:
+      SMSC_NAME: carrier-a
+      DELIVERY_RATE: "0.96"
+      DLR_DELAY_SECONDS: "1.5"
+      TPS: "300"
+    ports:
+      - "8101:8000"   # control API: PUT /faults
+    depends_on: []
+    healthcheck:
+      <<: *http-health
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+
+  carrier-b:
+    <<: *gateway
+    command: ["python", "-m", "smsgw.simulator"]
+    environment:
+      SMSC_NAME: carrier-b
+      DELIVERY_RATE: "0.90"
+      DLR_DELAY_SECONDS: "3"
+      TPS: "150"
+    ports:
+      - "8102:8000"
+    depends_on: []
+    healthcheck:
+      <<: *http-health
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+
+  prometheus:
+    image: prom/prometheus:v2.55.0
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/prometheus/rules:/etc/prometheus/rules:ro
+    ports:
+      - "9090:9090"
+
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    volumes:
+      - ./monitoring/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    ports:
+      - "9093:9093"
+
+  grafana:
+    image: grafana/grafana:11.3.0
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/sms-gateway.json
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3000:3000"
+
+  # docker compose --profile loadtest run --rm k6
+  k6:
+    image: grafana/k6:0.54.0
+    profiles: ["loadtest"]
+    volumes:
+      - ./loadtest:/scripts:ro
+    environment:
+      GATEWAY_URL: http://api:8080
+    command: ["run", "/scripts/send-sms.js"]
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  redis-data:

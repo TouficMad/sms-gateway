@@ -1,0 +1,467 @@
+{
+  "uid": "sms-gateway",
+  "title": "SMS Gateway",
+  "tags": [
+    "sms",
+    "smpp"
+  ],
+  "schemaVersion": 39,
+  "version": 1,
+  "time": {
+    "from": "now-30m",
+    "to": "now"
+  },
+  "refresh": "10s",
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Throughput (SMS/s)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 6,
+        "h": 5
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(sms_submit_total{result=\"ok\"}[1m]))",
+          "legendFormat": "SMS/s"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Delivery rate",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 6,
+        "y": 0,
+        "w": 6,
+        "h": 5
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 0.8
+              },
+              {
+                "color": "green",
+                "value": 0.9
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(sms_dlr_total{stat=\"DELIVRD\"}[5m])) / sum(rate(sms_dlr_total[5m]))",
+          "legendFormat": "delivered"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Queue backlog",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 6,
+        "h": 5
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 500
+              },
+              {
+                "color": "red",
+                "value": 1000
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max(sms_queue_backlog)",
+          "legendFormat": "backlog"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Carriers bound",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 18,
+        "y": 0,
+        "w": 6,
+        "h": 5
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max by (carrier) (sms_carrier_connected)",
+          "legendFormat": "{{carrier}}"
+        }
+      ],
+      "options": {
+        "colorMode": "background",
+        "textMode": "name"
+      }
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Submit rate by carrier",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 5,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "carrier:sms_submit_rate:rate1m",
+          "legendFormat": "{{carrier}}"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Delivery ratio by carrier",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 5,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "carrier:sms_delivery_ratio:rate5m",
+          "legendFormat": "{{carrier}}"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "DLR latency p95",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 13,
+        "w": 8,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "carrier:sms_dlr_latency_seconds:p95_5m",
+          "legendFormat": "{{carrier}}"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "submit_sm latency p95",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 13,
+        "w": 8,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.95, sum by (le, carrier) (rate(sms_submit_latency_seconds_bucket[5m])))",
+          "legendFormat": "{{carrier}}"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Failovers",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 13,
+        "w": 8,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (from_carrier) (rate(sms_failover_total[5m]))",
+          "legendFormat": "from {{from_carrier}}"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Receipts by status",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 21,
+        "w": 8,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (stat) (rate(sms_dlr_total[5m]))",
+          "legendFormat": "{{stat}}"
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "submit_sm errors by SMPP status",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 21,
+        "w": 8,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (carrier, result) (rate(sms_submit_total{result!=\"ok\"}[5m]))",
+          "legendFormat": "{{carrier}} {{result}}"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "Delivery ratio by route",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 21,
+        "w": 8,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "route:sms_delivery_ratio:rate5m",
+          "legendFormat": "{{route}}"
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "type": "table",
+      "title": "Segments sent, last hour (billing units)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 29,
+        "w": 24,
+        "h": 9
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "route:sms_segments:increase1h",
+          "instant": true,
+          "format": "table"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true
+            },
+            "renameByName": {
+              "Value": "Segments"
+            }
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "Segments",
+                "desc": true
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
